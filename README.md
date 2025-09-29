@@ -1,93 +1,148 @@
-# capture_banana
+==============
+Capture Napari
+==============
+
+Une interface Python simple basée sur `Napari <https://napari.org/>`_ pour la capture de photos depuis un appareil photo numérique (DSLR Nikon/Canon) ou une webcam.
+
+.. image:: https://img.shields.io/badge/python-3.8+-blue.svg
+   :target: https://www.python.org/downloads/
+.. image:: https://img.shields.io/badge/license-MIT-green.svg
+   :target: https://opensource.org/licenses/MIT
+
+.. contents:: Table des matières
+.. sectnum::
+
+Fonctionnalités
+---------------
+
+* **Double source de capture** : Contrôle des appareils photo DSLR via `gphoto2` (Linux/macOS) avec repli automatique sur la webcam (via OpenCV) si aucun DSLR n'est détecté. Un mode "factice" est utilisé si aucune caméra n'est trouvée.
+* **Prévisualisation en direct** : Un flux vidéo en temps réel de la caméra est affiché directement dans l'interface.
+* **Organisation des fichiers** :
+    * Définition d'un dossier de sauvegarde obligatoire.
+    * Nommage incrémentiel des fichiers (`prefixe_0001.png`, `prefixe_0002.png`, etc.). Le compteur s'ajuste automatiquement en fonction des fichiers existants.
+* **Gestion des calques** :
+    * Chaque capture est ajoutée comme un nouveau calque dans Napari.
+    * Une checkbox permet de choisir si la prévisualisation ou la dernière capture doit être affichée au premier plan.
+    * La suppression d'un calque de capture dans Napari supprime également le fichier correspondant sur le disque.
+    * Le calque de prévisualisation est "verrouillé" et ne peut pas être supprimé.
+* **Configuration externe** :
+    * Chargement automatique d'un fichier de paramètres `camera_settings.json` présent dans le dossier de sauvegarde.
+    * Possibilité d'appliquer un script de calibration de couleur personnalisé (`calibration.py`) aux images capturées.
+* **Chargement de session** : Les images existantes dans le dossier de sauvegarde sont automatiquement chargées au démarrage de l'application.
 
 
+Installation
+------------
 
-## Getting started
+Prérequis
+^^^^^^^^^
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+* Python 3.8 ou supérieur
+* Git
+* `libgphoto2` installé sur le système (pour Linux/macOS). Sur les systèmes Debian/Ubuntu :
+    .. code-block:: bash
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+        sudo apt-get update && sudo apt-get install libgphoto2-dev
 
-## Add your files
+Étapes d'installation
+^^^^^^^^^^^^^^^^^^^^^
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+1.  Clonez ce dépôt :
 
-```
-cd existing_repo
-git remote add origin https://forge.ird.fr/phim/bana_plus/capture_banana.git
-git branch -M main
-git push -uf origin main
-```
+    .. code-block:: bash
 
-## Integrate with your tools
+        git clone <URL_DU_DEPOT_GIT>
+        cd <NOM_DU_DOSSIER>
 
-- [ ] [Set up project integrations](https://forge.ird.fr/phim/bana_plus/capture_banana/-/settings/integrations)
+2.  Créez et activez un environnement virtuel Python :
 
-## Collaborate with your team
+    .. code-block:: bash
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+        python3 -m venv venv
+        source venv/bin/activate  # Sur Linux/macOS
+        # venv\Scripts\activate    # Sur Windows
 
-## Test and Deploy
+3.  Installez les dépendances requises :
 
-Use the built-in continuous integration in GitLab.
+    .. code-block:: bash
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+        pip install -r requirements.txt
 
-***
 
-# Editing this README
+Utilisation
+-----------
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Avant de lancer l'application, vous pouvez configurer deux fichiers.
 
-## Suggestions for a good README
+Configuration (Optionnel)
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+1.  **Réglages de l'appareil (`camera_settings.json`)**
 
-## Name
-Choose a self-explaining name for your project.
+    Créez un fichier `camera_settings.json` à la racine du dossier de sauvegarde que vous utiliserez. Ce fichier sera chargé automatiquement. Les noms des paramètres (`iso`, `f-number`, etc.) dépendent de votre modèle d'appareil photo.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+    Exemple :
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+    .. code-block:: json
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+        {
+          "iso": "200",
+          "f-number": "8",
+          "shutterspeed": "1/125",
+          "imageformat": "Large Fine JPEG"
+        }
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+2.  **Script de calibration (`calibration.py`)**
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+    Modifiez la fonction `apply_color_calibration` dans le fichier `calibration.py` pour y insérer votre propre algorithme de traitement d'image.
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+    .. code-block:: python
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+        import numpy as np
+        from skimage import exposure
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+        def apply_color_calibration(image: np.ndarray) -> np.ndarray:
+            """
+            REMPLACEZ CE CONTENU AVEC VOTRE PROPRE ALGORITHME.
+            """
+            p2, p98 = np.percentile(image, (2, 98))
+            calibrated_image = exposure.rescale_intensity(image, in_range=(p2, p98))
+            return (calibrated_image * 255).astype(np.uint8)
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+Lancer l'application
+^^^^^^^^^^^^^^^^^^^^
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Assurez-vous que votre environnement virtuel est activé, puis lancez le script principal :
 
-## License
-For open source projects, say how it is licensed.
+.. code-block:: bash
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+    python main.py
+
+Description de l'interface
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* **Contrôle de Capture** :
+    * `Dossier de sauvegarde` : Choisissez le dossier où les images seront enregistrées.
+    * `Préfixe du nom de fichier` : Définissez le préfixe pour les noms de fichiers.
+    * `Capturer l'image` : Déclenche la prise de vue.
+
+* **Options d'affichage** :
+    * `Prévisualisation au premier plan` : Cochez cette case pour que le flux vidéo en direct reste toujours visible au-dessus des captures. Décochez-la pour que la dernière capture soit affichée au premier plan.
+
+* **Réglages Appareil** :
+    * Permet de charger manuellement un fichier de réglages `.json` et de les appliquer à l'appareil DSLR connecté.
+
+* **Calibration** :
+    * Sélectionnez un ou plusieurs calques d'images capturées dans la liste des calques de Napari, puis cliquez sur `Appliquer la calibration` pour exécuter le script `calibration.py`.
+
+
+Notes pour les utilisateurs Windows
+-----------------------------------
+
+La bibliothèque `python-gphoto2` n'est pas compatible avec Windows. L'application a été conçue pour gérer cette situation :
+
+* Le fichier `requirements.txt` n'essaiera pas d'installer `gphoto2` sur Windows.
+* Au démarrage, le script détectera l'absence de DSLR et se rabattra automatiquement sur la **webcam** de l'ordinateur.
+* Si aucune webcam n'est trouvée, l'application démarrera en mode "factice" avec une image générée aléatoirement.
+* Les fonctionnalités de réglages de l'appareil (via `camera_settings.json`) ne sont disponibles que pour les appareils DSLR et seront donc inopérantes sous Windows.

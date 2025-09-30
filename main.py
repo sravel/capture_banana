@@ -33,6 +33,7 @@ except ImportError:
 # --- Constantes ---
 LIVE_VIEW_NAME = "Prévisualisation en direct"
 DEFAULT_SETTINGS_FILENAME = "camera_settings.json"
+CALIBRATION_FILENAME = "last_calibration.json"
 
 
 class CameraController:
@@ -179,6 +180,10 @@ class NapariCaptureApp:
         self.viewer = viewer
         self.camera_controller = CameraController(viewer)
 
+        # NOUVEAU : Attributs pour mémoriser la dernière calibration
+        self.last_calibration_method = None  # Sera 'auto' ou 'manual'
+        self.last_calibration_data = None  # Stockera la zone ou les points
+
         self._setup_widgets()
         self._connect_events()
 
@@ -192,22 +197,25 @@ class NapariCaptureApp:
         self.simple_calibration_w = self._create_simple_calibration_widget()
         self.checker_calibration_w = self._create_checker_calibration_widget()
         self.view_mode_w = self._create_view_mode_widget()
-
+        # Widget pour la calibration en série
+        self.batch_calibration_w = self._create_batch_calibration_widget()
         # Lie l'instance de la classe (self) au paramètre 'self' de chaque widget
         self.capture_w.self.bind(self)
         self.settings_w.self.bind(self)
         self.simple_calibration_w.self.bind(self)
         self.checker_calibration_w.self.bind(self)
+        self.batch_calibration_w.self.bind(self)
         self.view_mode_w.self.bind(self)
 
+        # Ajout des widgets au dock
         self.viewer.window.add_dock_widget(self.capture_w, area="right", name="Contrôle de Capture")
         self.viewer.window.add_dock_widget(self.view_mode_w, area="right", name="Options d'affichage")
         self.viewer.window.add_dock_widget(self.settings_w, area="right", name="Réglages Appareil")
         # On ajoute les deux widgets de calibration
         self.viewer.window.add_dock_widget(self.checker_calibration_w, area="right", name="Calibration par Charte")
+        # NOUVEAU
+        self.viewer.window.add_dock_widget(self.batch_calibration_w, area="right", name="Calibration en Série")
         self.viewer.window.add_dock_widget(self.simple_calibration_w, area="right", name="Calibration Simple")
-
-
 
     def _connect_events(self):
         self.viewer.layers.events.removed.connect(self._on_layer_removed)
@@ -218,6 +226,8 @@ class NapariCaptureApp:
         self.view_mode_w.preview_first.changed.connect(self._on_view_mode_change)
         self.checker_calibration_w.step1_button.changed.connect(self._on_checker_step1_click)
         self.checker_calibration_w.step2_button.changed.connect(self._on_checker_step2_click)
+        # NOUVEAU : Connexion pour le bouton de calibration en série
+        self.batch_calibration_w.apply_to_all_button.changed.connect(self._on_apply_calibration_to_all)
 
     # --- Widgets ---
 
@@ -233,7 +243,8 @@ class NapariCaptureApp:
         file_prefix={"label": "Préfixe du nom de fichier"},
         call_button="Capturer l'image"
     )
-    def _create_capture_widget(self, save_directory: Path = Path.home().joinpath("bana_test"), file_prefix: str = "capture"):
+    def _create_capture_widget(self, save_directory: Path = Path.home().joinpath("bana_test"),
+                               file_prefix: str = "capture"):
         if not save_directory or not save_directory.is_dir():
             show_error("Veuillez définir un dossier de sauvegarde valide.")
             return
@@ -306,6 +317,13 @@ class NapariCaptureApp:
         Crée le widget pour la calibration par charte.
         La logique est maintenant déportée dans les gestionnaires d'événements.
         """
+        pass
+
+    @magic_factory(
+        apply_to_all_button={"widget_type": "PushButton", "text": "Appliquer la calibration mémorisée à tout"},
+        call_button=False
+    )
+    def _create_batch_calibration_widget(self, apply_to_all_button=False):
         pass
 
     # --- Gestionnaires d'événements ---
@@ -458,8 +476,8 @@ class NapariCaptureApp:
 
     def _on_checker_step2_click(self):
         """
-        Lance la calibration. Tente d'abord une détection automatique.
-        Si elle échoue, passe en mode de sélection manuelle par points.
+        Lance la calibration. Tente l'auto-détection, passe en manuel si échec,
+        et mémorise les données de calibration en cas de succès.
         """
         # --- Vérifications initiales ---
         selected_layers = [layer for layer in self.viewer.layers.selection if
@@ -477,28 +495,34 @@ class NapariCaptureApp:
                 try:
                     calibrated_data = calibrate_with_manual_points(source_image_layer.data, points_layer.data)
                     self.viewer.add_image(calibrated_data, name=f"{source_image_layer.name}_calibré_manuel")
+
+                    # NOUVEAU : Mémorisation
+                    self.last_calibration_method = 'manual'
+                    self.last_calibration_data = points_layer.data
+                    self._save_calibration_data()  # NOUVEAU: Sauvegarde
+                    show_info("Calibration manuelle réussie et sauvegardée !")
+
                     self.viewer.layers.pop(self.viewer.layers.index('Points de calibration'))
                     show_info("Calibration manuelle terminée !")
                 except Exception as e:
                     show_error(f"Échec de la calibration manuelle : {e}")
                 return
             else:
-                show_error(
-                    f"Le calque 'Points de calibration' existe mais ne contient pas 6 points. Il en contient {len(points_layer.data)}.")
+                show_error(f"Le calque 'Points de calibration' contient {len(points_layer.data)} points au lieu de 6.")
                 return
         except KeyError:
             # Le calque de points n'existe pas, on passe à la détection automatique.
             pass
 
-        # --- CAS 2: On tente la détection automatique ---
+        # Cas 2: Calibration automatique à partir de la zone
         try:
             shapes_layer = self.viewer.layers['Zone de la charte']
             if not shapes_layer.data:
-                show_error("Aucune zone n'a été dessinée. Veuillez compléter l'étape 1.")
+                show_error("Aucune zone n'a été dessinée. Compléter l'étape 1.")
                 return
             bounding_box = shapes_layer.data[-1]
         except KeyError:
-            show_error("Le calque 'Zone de la charte' n'existe pas. Veuillez lancer l'étape 1.")
+            show_error("Le calque 'Zone de la charte' n'existe pas. Lancez l'étape 1.")
             return
 
         try:
@@ -508,8 +532,13 @@ class NapariCaptureApp:
 
             # Affichage de l'image ROI pour le débogage
             self.viewer.add_image(roi_image_debug, name="[Debug] Zone analysée", rgb=True)
-
             self.viewer.add_image(calibrated_data, name=f"{source_image_layer.name}_calibré_auto")
+
+            self.last_calibration_method = 'auto'
+            self.last_calibration_data = bounding_box
+            self._save_calibration_data()  # NOUVEAU: Sauvegarde
+            show_info("Calibration automatique réussie et sauvegardée !")
+
             self.viewer.layers.pop(self.viewer.layers.index('Zone de la charte'))
             show_info("Calibration automatique terminée avec succès !")
 
@@ -521,13 +550,111 @@ class NapariCaptureApp:
             # On crée un calque de points pour l'utilisateur
             points_layer = self.viewer.add_points(name="Points de calibration", size=20, ndim=2)
             points_layer.mode = 'add'
-
             # On donne des instructions claires
             show_info(
                 "Cliquez dans l'ordre sur le CENTRE des patchs suivants : "
                 "1.BLANC, 2.GRIS MOYEN, 3.NOIR, 4.ROUGE, 5.VERT, 6.BLEU. "
                 "Puis, cliquez à nouveau sur 'Étape 2: Calibrer'."
             )
+
+    # MODIFIÉ : _auto_load_settings charge maintenant la calibration
+    def _auto_load_settings(self, directory: Path):
+        show_info(f"Dossier sélectionné : {directory}")
+        prefix = self.capture_w.file_prefix.value
+
+        self._load_existing_images(directory, prefix)
+        self.camera_controller.set_next_capture_count(directory, prefix)
+
+        settings_file = directory / DEFAULT_SETTINGS_FILENAME
+        if settings_file.exists():
+            self.camera_controller.load_and_apply_settings(settings_file)
+        else:
+            show_info(f"Aucun fichier '{DEFAULT_SETTINGS_FILENAME}' trouvé dans le dossier.")
+
+        # NOUVEAU : On charge la calibration sauvegardée pour ce dossier
+        self._load_calibration_data(directory)
+
+    # NOUVELLE méthode pour sauvegarder la calibration
+    def _save_calibration_data(self):
+        """Sauvegarde la dernière calibration réussie dans un fichier JSON."""
+        save_dir = self.capture_w.save_directory.value
+        if not save_dir or not self.last_calibration_data is not None:
+            return
+
+        filepath = save_dir / CALIBRATION_FILENAME
+
+        # On convertit les arrays numpy en listes pour la sauvegarde JSON
+        data_to_save = {
+            "method": self.last_calibration_method,
+            "data": self.last_calibration_data.tolist()
+        }
+
+        try:
+            with open(filepath, 'w') as f:
+                json.dump(data_to_save, f, indent=4)
+            show_info(f"Données de calibration sauvegardées dans {filepath.name}")
+        except Exception as e:
+            show_error(f"Impossible de sauvegarder la calibration : {e}")
+
+    # NOUVELLE méthode pour charger la calibration
+    def _load_calibration_data(self, directory: Path):
+        """Charge les données de calibration depuis un fichier JSON si il existe."""
+        filepath = directory / CALIBRATION_FILENAME
+        if filepath.exists():
+            try:
+                with open(filepath, 'r') as f:
+                    calib_data = json.load(f)
+
+                self.last_calibration_method = calib_data["method"]
+                # On reconvertit les listes en arrays numpy
+                self.last_calibration_data = np.array(calib_data["data"])
+
+                show_info(
+                    f"Calibration précédente (méthode: {self.last_calibration_method}) chargée depuis le fichier.")
+            except Exception as e:
+                show_error(f"Impossible de charger le fichier de calibration : {e}")
+                self.last_calibration_data = None
+        else:
+            # S'il n'y a pas de fichier, on réinitialise la mémoire
+            self.last_calibration_data = None
+
+    # NOUVEAU : Logique pour le bouton "Appliquer à tout"
+    def _on_apply_calibration_to_all(self):
+        """Applique la dernière calibration réussie à toutes les images non calibrées."""
+        if self.last_calibration_data is None:
+            show_error("Aucune calibration n'est en mémoire. Veuillez d'abord calibrer une image.")
+            return
+
+        # On identifie toutes les images qui ont besoin d'être calibrées
+        images_to_calibrate = [
+            layer for layer in self.viewer.layers
+            if isinstance(layer, Image) and
+               layer.name != LIVE_VIEW_NAME and
+               not layer.name.startswith("[Debug]") and
+               not layer.name.endswith(("_calibré_auto", "_calibré_manuel", "_contraste"))
+        ]
+
+        if not images_to_calibrate:
+            show_info("Toutes les images sont déjà calibrées.")
+            return
+
+        show_info(f"Application de la calibration mémorisée à {len(images_to_calibrate)} image(s)...")
+
+        for layer in images_to_calibrate:
+            try:
+                if self.last_calibration_method == 'auto':
+                    calibrated_data, _ = calibrate_with_color_checker(layer.data, self.last_calibration_data)
+                    suffix = "_calibré_auto"
+                elif self.last_calibration_method == 'manual':
+                    calibrated_data = calibrate_with_manual_points(layer.data, self.last_calibration_data)
+                    suffix = "_calibré_manuel"
+
+                # On ajoute le nouveau calque calibré
+                self.viewer.add_image(calibrated_data, name=f"{layer.name}{suffix}")
+            except Exception as e:
+                show_error(f"Erreur lors de la calibration de '{layer.name}': {e}")
+
+        show_info("Calibration en série terminée.")
 
     def start(self):
         self.camera_controller.start_live_view()

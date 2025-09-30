@@ -20,7 +20,7 @@ import re
 import cv2
 
 # On importe notre fonction de calibration
-from calibration import apply_color_calibration
+from calibration import simple_contrast_stretch, calibrate_with_color_checker, calibrate_with_manual_points
 
 # Essayer d'importer gphoto2
 try:
@@ -189,19 +189,25 @@ class NapariCaptureApp:
     def _setup_widgets(self):
         self.capture_w = self._create_capture_widget()
         self.settings_w = self._create_settings_widget()
-        self.calibration_w = self._create_calibration_widget()
+        self.simple_calibration_w = self._create_simple_calibration_widget()
+        self.checker_calibration_w = self._create_checker_calibration_widget()
         self.view_mode_w = self._create_view_mode_widget()
 
         # Lie l'instance de la classe (self) au paramètre 'self' de chaque widget
         self.capture_w.self.bind(self)
         self.settings_w.self.bind(self)
-        self.calibration_w.self.bind(self)
+        self.simple_calibration_w.self.bind(self)
+        self.checker_calibration_w.self.bind(self)
         self.view_mode_w.self.bind(self)
 
         self.viewer.window.add_dock_widget(self.capture_w, area="right", name="Contrôle de Capture")
         self.viewer.window.add_dock_widget(self.view_mode_w, area="right", name="Options d'affichage")
         self.viewer.window.add_dock_widget(self.settings_w, area="right", name="Réglages Appareil")
-        self.viewer.window.add_dock_widget(self.calibration_w, area="right", name="Calibration")
+        # On ajoute les deux widgets de calibration
+        self.viewer.window.add_dock_widget(self.checker_calibration_w, area="right", name="Calibration par Charte")
+        self.viewer.window.add_dock_widget(self.simple_calibration_w, area="right", name="Calibration Simple")
+
+
 
     def _connect_events(self):
         self.viewer.layers.events.removed.connect(self._on_layer_removed)
@@ -210,6 +216,8 @@ class NapariCaptureApp:
             lambda prefix: self.camera_controller.set_next_capture_count(self.capture_w.save_directory.value, prefix)
         )
         self.view_mode_w.preview_first.changed.connect(self._on_view_mode_change)
+        self.checker_calibration_w.step1_button.changed.connect(self._on_checker_step1_click)
+        self.checker_calibration_w.step2_button.changed.connect(self._on_checker_step2_click)
 
     # --- Widgets ---
 
@@ -225,10 +233,11 @@ class NapariCaptureApp:
         file_prefix={"label": "Préfixe du nom de fichier"},
         call_button="Capturer l'image"
     )
-    def _create_capture_widget(self, save_directory: Path = Path.home(), file_prefix: str = "capture"):
+    def _create_capture_widget(self, save_directory: Path = Path.home().joinpath("bana_test"), file_prefix: str = "capture"):
         if not save_directory or not save_directory.is_dir():
             show_error("Veuillez définir un dossier de sauvegarde valide.")
             return
+        save_directory.mkdir(exist_ok=True)
 
         try:
             image_data = self.camera_controller.capture_high_res_image()
@@ -236,7 +245,7 @@ class NapariCaptureApp:
             show_error(f"Échec de la capture : {e}")
             return
 
-        filename = f"{file_prefix}_{self.camera_controller.capture_count:04d}.png"
+        filename = f"{file_prefix}_{self.camera_controller.capture_count:04d}.tiff"
         full_path = save_directory / filename
 
         new_layer = self.viewer.add_image(
@@ -269,8 +278,8 @@ class NapariCaptureApp:
         else:
             show_error("Fichier de réglages non valide.")
 
-    @magic_factory(call_button="Appliquer la calibration")
-    def _create_calibration_widget(self):
+    @magic_factory(call_button="Appliquer Contraste Auto")
+    def _create_simple_calibration_widget(self):
         selected_layers = [layer for layer in self.viewer.layers.selection if layer.name != LIVE_VIEW_NAME]
         if not selected_layers:
             show_error("Veuillez sélectionner au moins une image capturée.")
@@ -279,10 +288,25 @@ class NapariCaptureApp:
         for layer in selected_layers:
             if isinstance(layer, Image):
                 try:
-                    calibrated_data = apply_color_calibration(layer.data)
-                    self.viewer.add_image(calibrated_data, name=f"{layer.name}_calibrated")
+                    # On appelle maintenant la fonction de contraste simple
+                    calibrated_data = simple_contrast_stretch(layer.data)
+                    self.viewer.add_image(calibrated_data, name=f"{layer.name}_contraste")
                 except Exception as e:
                     show_error(f"Erreur de calibration sur '{layer.name}': {e}")
+
+    @magic_factory(
+        # On définit les deux boutons qui composent le widget
+        step1_button={"widget_type": "PushButton", "text": "Étape 1: Créer la zone de sélection"},
+        step2_button={"widget_type": "PushButton", "text": "Étape 2: Calibrer depuis la zone"},
+        # On supprime le bouton "Run" qui est inutile ici
+        call_button=False
+    )
+    def _create_checker_calibration_widget(self, step1_button=False, step2_button=False):
+        """
+        Crée le widget pour la calibration par charte.
+        La logique est maintenant déportée dans les gestionnaires d'événements.
+        """
+        pass
 
     # --- Gestionnaires d'événements ---
 
@@ -312,7 +336,7 @@ class NapariCaptureApp:
                     show_info(f"Fichier supprimé du disque : {filepath.name}")
 
                     prefix = self.capture_w.file_prefix.value
-                    expected_last_name = f"{prefix}_{self.camera_controller.capture_count - 1:04d}.png"
+                    expected_last_name = f"{prefix}_{self.camera_controller.capture_count - 1:04d}.tiff"
                     if layer.name == expected_last_name and self.camera_controller.capture_count > 1:
                         self.camera_controller.capture_count -= 1
                         show_info(f"Compteur de capture réajusté à {self.camera_controller.capture_count}")
@@ -341,11 +365,11 @@ class NapariCaptureApp:
         show_info("Recherche d'images existantes...")
 
         # Regex pour extraire le numéro du fichier
-        pattern = re.compile(rf"{re.escape(prefix)}_(\d{{4}})\.png")
+        pattern = re.compile(rf"{re.escape(prefix)}_(\d{{4}})\.tiff")
 
         # Trouve et trie les fichiers par leur numéro
         image_files = []
-        for f in directory.glob(f"{prefix}_*.png"):
+        for f in directory.glob(f"{prefix}_*.tiff"):
             match = pattern.match(f.name)
             if match:
                 num = int(match.group(1))
@@ -402,7 +426,7 @@ class NapariCaptureApp:
                 return
 
             prefix = self.capture_w.file_prefix.value
-            last_capture_name = f"{prefix}_{last_capture_num:04d}.png"
+            last_capture_name = f"{prefix}_{last_capture_num:04d}.tiff"
 
             try:
                 # On cherche le calque par son nom exact
@@ -414,6 +438,96 @@ class NapariCaptureApp:
                 # Le calque de la dernière capture n'a pas été trouvé (peut-être supprimé)
                 show_info(f"La dernière capture ('{last_capture_name}') n'est pas dans la liste.")
                 self.view_mode_w.preview_first.value = True  # On recoche la case
+
+    def _on_checker_step1_click(self):
+        """Crée un calque de formes pour que l'utilisateur dessine un rectangle."""
+        # On vérifie si un calque de zone existe déjà pour ne pas en créer plusieurs
+        if 'Zone de la charte' not in self.viewer.layers:
+            shapes_layer = self.viewer.add_shapes(
+                name="Zone de la charte",
+                shape_type='rectangle',
+                edge_color='yellow',
+                face_color='transparent'
+            )
+            shapes_layer.mode = 'add_rectangle'
+            show_info("Dessinez un rectangle autour de la charte de couleurs, puis passez à l'étape 2.")
+        else:
+            show_info("Un calque 'Zone de la charte' existe déjà. Vous pouvez modifier le rectangle existant.")
+
+        # NOUVEAU : La logique de l'étape 2 est maintenant dans sa propre méthode
+
+    def _on_checker_step2_click(self):
+        """
+        Lance la calibration. Tente d'abord une détection automatique.
+        Si elle échoue, passe en mode de sélection manuelle par points.
+        """
+        # --- Vérifications initiales ---
+        selected_layers = [layer for layer in self.viewer.layers.selection if
+                           isinstance(layer, Image) and layer.name != LIVE_VIEW_NAME]
+        if not selected_layers:
+            show_error("Veuillez sélectionner l'image à calibrer dans la liste des calques.")
+            return
+        source_image_layer = selected_layers[0]
+
+        # --- CAS 1: L'utilisateur a déjà placé des points manuels ---
+        try:
+            points_layer = self.viewer.layers['Points de calibration']
+            if len(points_layer.data) == 6:
+                show_info("6 points détectés, lancement de la calibration manuelle...")
+                try:
+                    calibrated_data = calibrate_with_manual_points(source_image_layer.data, points_layer.data)
+                    self.viewer.add_image(calibrated_data, name=f"{source_image_layer.name}_calibré_manuel")
+                    self.viewer.layers.pop(self.viewer.layers.index('Points de calibration'))
+                    show_info("Calibration manuelle terminée !")
+                except Exception as e:
+                    show_error(f"Échec de la calibration manuelle : {e}")
+                return
+            else:
+                show_error(
+                    f"Le calque 'Points de calibration' existe mais ne contient pas 6 points. Il en contient {len(points_layer.data)}.")
+                return
+        except KeyError:
+            # Le calque de points n'existe pas, on passe à la détection automatique.
+            pass
+
+        # --- CAS 2: On tente la détection automatique ---
+        try:
+            shapes_layer = self.viewer.layers['Zone de la charte']
+            if not shapes_layer.data:
+                show_error("Aucune zone n'a été dessinée. Veuillez compléter l'étape 1.")
+                return
+            bounding_box = shapes_layer.data[-1]
+        except KeyError:
+            show_error("Le calque 'Zone de la charte' n'existe pas. Veuillez lancer l'étape 1.")
+            return
+
+        try:
+            show_info("Tentative de détection automatique de la charte...")
+            # On récupère l'image calibrée ET l'image ROI pour le débogage
+            calibrated_data, roi_image_debug = calibrate_with_color_checker(source_image_layer.data, bounding_box)
+
+            # Affichage de l'image ROI pour le débogage
+            self.viewer.add_image(roi_image_debug, name="[Debug] Zone analysée", rgb=True)
+
+            self.viewer.add_image(calibrated_data, name=f"{source_image_layer.name}_calibré_auto")
+            self.viewer.layers.pop(self.viewer.layers.index('Zone de la charte'))
+            show_info("Calibration automatique terminée avec succès !")
+
+        except ValueError as e:
+            # --- CAS 3: La détection automatique a échoué, on passe en mode manuel ---
+            show_error(f"Échec de la détection automatique : {e}")
+            show_info("Veuillez maintenant sélectionner 6 points manuellement.")
+
+            # On crée un calque de points pour l'utilisateur
+            points_layer = self.viewer.add_points(name="Points de calibration", size=20, ndim=2)
+            points_layer.mode = 'add'
+
+            # On donne des instructions claires
+            show_info(
+                "Cliquez dans l'ordre sur le CENTRE des patchs suivants : "
+                "1.BLANC, 2.GRIS MOYEN, 3.NOIR, 4.ROUGE, 5.VERT, 6.BLEU. "
+                "Puis, cliquez à nouveau sur 'Étape 2: Calibrer'."
+            )
 
     def start(self):
         self.camera_controller.start_live_view()

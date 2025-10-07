@@ -1,3 +1,30 @@
+Metadata-Version: 2.4
+Name: napari-capture
+Version: 0.1.0
+Summary: A simple Napari-based interface for capturing images from DSLRs and webcams.
+Author-email: Your Name <your.email@example.com>
+License: MIT
+Classifier: Development Status :: 4 - Beta
+Classifier: Framework :: napari
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Scientific/Engineering :: Image Processing
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: napari[all]
+Requires-Dist: numpy
+Requires-Dist: imageio
+Requires-Dist: opencv-python
+Requires-Dist: scikit-image
+Requires-Dist: colour-science
+Requires-Dist: colour-checker-detection
+Requires-Dist: gphoto2; sys_platform != "win32"
+
 # Napari Capture
 
 A simple Python interface based on [Napari](https://napari.org/) for capturing photos from a digital camera (Nikon/Canon DSLR) or a webcam.

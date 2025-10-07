@@ -1,0 +1,11 @@
+README.md
+pyproject.toml
+src/napari_capture/__init__.py
+src/napari_capture/app.py
+src/napari_capture/calibration.py
+src/napari_capture.egg-info/PKG-INFO
+src/napari_capture.egg-info/SOURCES.txt
+src/napari_capture.egg-info/dependency_links.txt
+src/napari_capture.egg-info/entry_points.txt
+src/napari_capture.egg-info/requires.txt
+src/napari_capture.egg-info/top_level.txt

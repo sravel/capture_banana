@@ -1,0 +1,2 @@
+[console_scripts]
+napari-capture = napari_capture.app:main

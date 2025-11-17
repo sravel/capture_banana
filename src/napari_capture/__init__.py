@@ -1,0 +1,1 @@
+# This file makes the `napari_capture` directory a Python package.

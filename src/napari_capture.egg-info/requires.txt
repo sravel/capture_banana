@@ -1,0 +1,10 @@
+napari[all]
+numpy
+imageio
+opencv-python
+scikit-image
+colour-science
+colour-checker-detection
+
+[:sys_platform != "win32"]
+gphoto2

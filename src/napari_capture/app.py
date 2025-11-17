@@ -20,7 +20,7 @@ import re
 import cv2
 
 # On importe notre fonction de calibration
-from calibration import simple_contrast_stretch, calibrate_with_color_checker, calibrate_with_manual_points
+from .calibration import simple_contrast_stretch, calibrate_with_color_checker, calibrate_with_manual_points
 
 # Essayer d'importer gphoto2
 try:
@@ -669,9 +669,16 @@ class NapariCaptureApp:
         print("Nettoyage terminé.")
 
 
-if __name__ == "__main__":
+def main():
+    """Lancement de l'application Napari."""
     viewer = napari.Viewer(title="Interface de Capture Photo")
     app = NapariCaptureApp(viewer)
     app.start()
+
+    # Le `napari.run()` est bloquant. On connecte la fermeture de la fenêtre à notre nettoyage.
+    viewer.window.qt_viewer.destroyed.connect(app.close)
+
     napari.run()
-    app.close()
+
+if __name__ == "__main__":
+    main()
